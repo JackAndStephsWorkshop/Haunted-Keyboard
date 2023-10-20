@@ -1,5 +1,5 @@
 # haunted-keyboard
-# Have spooky conversations with ethereal AI through this magical keyboard.
+## Have spooky conversations with ethereal AI through this magical keyboard.
 
 ![IMG_1320](https://github.com/JackAndStephsWorkshop/haunted-keyboard/assets/131804912/6dd85e7a-a3f0-4030-a411-394bf739c23c)
 
@@ -7,6 +7,7 @@ This custom PCB keyboard is powered by a Raspberry Pi Pico W and connects to any
 
 Find out more on the project's [Hackaday.io page](https://hackaday.io/project/192798-haunted-keyboard).
 
+## Edits to make to code.py
 Find this section in the code.py file and replace with your SSID and password. 
 wifi.radio.connect('SSID', 'Password')
 
