@@ -15,12 +15,16 @@ from adafruit_hid.keycode import Keycode
 from adafruit_hid.consumer_control import ConsumerControl
 from adafruit_hid.consumer_control_code import ConsumerControlCode
 
-#Keyboard code
+chatGPT_enabled = True  # By default, the ChatGPT section is enabled.
 
+# === Keyboard Setup ===
 km = keypad.KeyMatrix(
     row_pins=(board.GP15, board.GP12, board.GP13, board.GP14),
-    column_pins=(board.GP16, board.GP17, board.GP18, board.GP19, board.GP20, board.GP21, board.GP22, board.GP11, board.GP10, board.GP9, board.GP8, board.GP7),
-	columns_to_anodes=True,
+    column_pins=(
+        board.GP16, board.GP17, board.GP18, board.GP19, board.GP20, board.GP21,
+        board.GP22, board.GP11, board.GP10, board.GP9, board.GP8, board.GP7
+    ),
+    columns_to_anodes=True,
 )
 # Get the HID device for the keyboard.
 keyboard_device = None
@@ -39,11 +43,12 @@ if not keyboard_device or not consumer_control_device:
 kbd = Keyboard(keyboard_device)         # Use keyboard_device here
 cc = ConsumerControl(consumer_control_device)  # Use consumer_control_device here
 
+# === Keymap Configuration ===
 KEYMAP = [
     [Keycode.ESCAPE, Keycode.Q, Keycode.W, Keycode.E, Keycode.R, Keycode.T, Keycode.Y, Keycode.U, Keycode.I, Keycode.O, Keycode.P, Keycode.BACKSPACE],
     [Keycode.TAB, Keycode.A, Keycode.S, Keycode.D, Keycode.F, Keycode.G, Keycode.H, Keycode.J, Keycode.K, Keycode.L, Keycode.SEMICOLON, Keycode.ENTER],
     [Keycode.SHIFT, Keycode.Z, Keycode.X, Keycode.C, Keycode.V, Keycode.B, Keycode.N, Keycode.M, Keycode.COMMA, Keycode.PERIOD, Keycode.UP_ARROW, Keycode.SHIFT],
-    [Keycode.CONTROL, Keycode.GUI, Keycode.ALT, Keycode.SPACE, None, Keycode.SPACE, None, Keycode.GUI, Keycode.FORWARD_SLASH, Keycode.LEFT_ARROW, Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW]
+    [Keycode.CONTROL, Keycode.GUI, Keycode.ALT, Keycode.SPACE, None, Keycode.SPACE, None, Keycode.QUOTE, Keycode.FORWARD_SLASH, Keycode.LEFT_ARROW, Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW]
 ]
 
 def keycode_to_char(keycode):
@@ -88,6 +93,7 @@ def keycode_to_char(keycode):
         Keycode.GUI: '[GUI]',  # or '[WIN]' or '' as preferred
         Keycode.ALT: '[ALT]',
         Keycode.SPACE: ' ',
+        Keycode.QUOTE: '"',
         Keycode.FORWARD_SLASH: '/',
         Keycode.LEFT_ARROW: '[LEFT]',  # or handle as you see fit
         Keycode.DOWN_ARROW: '[DOWN]',  # or handle as you see fit
@@ -141,6 +147,7 @@ def char_to_keycode(ch):
         '[GUI]': Keycode.GUI,
         '[ALT]': Keycode.ALT,
         ' ': Keycode.SPACE,
+        '"': Keycode.QUOTE,
         '/': Keycode.FORWARD_SLASH,
         '[LEFT]': Keycode.LEFT_ARROW,
         '[DOWN]': Keycode.DOWN_ARROW,
@@ -150,23 +157,50 @@ def char_to_keycode(ch):
 
     return None  # If the character isn't recognized
 
+
+# === Main Execution ===
+escape_sequence_count = 0
+chatgpt_enabled = True
+
 print("Waiting for keypresses...")
+
+
 
 #Chat GPT code
 
 url = "https://api.openai.com/v1/chat/completions"
 headers = {"Content-Type": "application/json",
-			"Authorization": os.getenv('OPEN_AI_KEY')}
+         "Authorization": os.getenv('OPEN_AI_KEY')}
 
-#  connect to SSID
-wifi.radio.connect('SSID', 'Password')
+# List of SSID and password pairs
+networks = [
+    ('Unintended Consequences', 'entropy!'),
+    ('STRONGHOLD', 'strongholdclimb'),
+    ("Jack's iPhone", "inininin")
+]
 
-pool = socketpool.SocketPool(wifi.radio)
-requests = adafruit_requests.Session(pool, ssl.create_default_context())
+
+connected = False
+
+for ssid, password in networks:
+    try:
+        wifi.radio.connect(ssid, password)
+        connected = True
+        print(f"Connected to {ssid}.")
+        break
+    except Exception as e:
+        print(f"Failed to connect to {ssid}. Error: {e}")
+
+if connected:
+    pool = socketpool.SocketPool(wifi.radio)
+    requests = adafruit_requests.Session(pool, ssl.create_default_context())
+    # Add other code here for when you are connected
+else:
+    print("Failed to connect to any network.")
 
 
 messages = [
-    {"content": "You are an ethereal spirit with a haunted, spooky vibe, who makes brief, dark, barely coherent statements.", "role": "system"}
+    {"content": "You are an ethereal spirit that haunts this mechanical keyboard with a spooky vibe, who makes brief, haunting predictive statements.", "role": "system"}
 ]
 jsonData = {
     "model": "gpt-3.5-turbo",
@@ -175,10 +209,15 @@ jsonData = {
     "messages": messages
 }
 
+chatgpt_enabled = True  # This variable will determine whether Chat GPT functionality is active
 
 # Step 1: Initialize an empty string for the accumulated keystrokes.
 typed_message = ""
 enter_pressed = False  # Add this flag
+
+# Initialize a list to track the last three keypresses and their timestamps
+last_three_keys = [(None, 0), (None, 0), (None, 0)]
+
 
 while True:
     event = km.events.get()
@@ -192,12 +231,25 @@ while True:
             if event.pressed:
                 kbd.press(keycode)
                 
+                # Update the last_three_keys list
+                current_time = time.time()
+                last_three_keys.pop(0)  # Remove the oldest key
+                last_three_keys.append((keycode, current_time))
+
+                # Check for three consecutive "Escape" key presses within 2 seconds
+                if all(k == Keycode.ESCAPE for k, _ in last_three_keys) and (last_three_keys[2][1] - last_three_keys[0][1] <= 2):
+                    chatgpt_enabled = not chatgpt_enabled
+                    print("Chat GPT is now", "enabled" if chatgpt_enabled else "disabled")
+                    last_three_keys = [(None, 0), (None, 0), (None, 0)]  # Reset the list to prevent immediate re-triggering
+
                 # Instead of printing the keystrokes, accumulate them.
                 if keycode == Keycode.BACKSPACE:
                     typed_message = typed_message[:-1]  # Remove the last character.
                 elif keycode == Keycode.ENTER:
                     kbd.release(keycode)
-                    if not enter_pressed:  # Check if "Enter" was already pressed
+                    if not enter_pressed and chatgpt_enabled:  # Check if "Enter" was already pressed AND if Chat GPT is enabled
+                        enter_pressed = True
+                        
                         # Use the accumulated typed_message as the message for the API.
                         messages.append({"content": typed_message, "role": "user"})
                         jsonData["messages"] = messages
@@ -224,17 +276,20 @@ while True:
                                     kbd.release(keycode)
                                 time.sleep(0.05)
 
+
+
                         # Reset typed_message and messages for the next input.
                         typed_message = ""
                         messages = [
                             {"content": "You are an ethereal spirit with a haunted, spooky vibe, who makes brief, dark, barely coherent statements.", "role": "system"}
                         ]
-
-                        enter_pressed = True  # Set the flag to True, indicating "Enter" has been pressed
+                            
                 else:
                     # Handle capital letters, etc.
                     typed_message += keycode_to_char(keycode)
 
             else:
+                if keycode == Keycode.ENTER:
+                    enter_pressed = False  # Reset the enter_pressed flag on Keycode.ENTER release
                 kbd.release_all()
                 kbd.release(keycode)
