@@ -9,6 +9,7 @@ import json
 import board
 import keypad
 import usb_hid
+import neopixel
 
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
@@ -42,6 +43,20 @@ if not keyboard_device or not consumer_control_device:
 # Initialize the HID devices.
 kbd = Keyboard(keyboard_device)         # Use keyboard_device here
 cc = ConsumerControl(consumer_control_device)  # Use consumer_control_device here
+
+
+# === NeoPixel Setup ===
+
+pixel_pin = board.GP26
+
+# The number of NeoPixels
+num_pixels = 6
+
+ORDER = neopixel.GRB
+
+pixels = neopixel.NeoPixel(
+    pixel_pin, num_pixels, brightness=0.5, auto_write=False, pixel_order=ORDER
+)
 
 # === Keymap Configuration ===
 KEYMAP = [
@@ -157,6 +172,36 @@ def char_to_keycode(ch):
 
     return None  # If the character isn't recognized
 
+def wheel(pos):
+    # Input a value 0 to 255 to get a color value.
+    # The colours are a transition r - g - b - back to r.
+    if pos < 0 or pos > 255:
+        r = g = b = 0
+    elif pos < 85:
+        r = int(pos * 3)
+        g = int(255 - pos * 3)
+        b = 0
+    elif pos < 170:
+        pos -= 85
+        r = int(255 - pos * 3)
+        g = 0
+        b = int(pos * 3)
+    else:
+        pos -= 170
+        r = 0
+        g = int(pos * 3)
+        b = int(255 - pos * 3)
+    return (r, g, b) if ORDER in (neopixel.RGB, neopixel.GRB) else (r, g, b, 0)
+
+
+def rainbow_cycle(wait):
+    for j in range(255):
+        for i in range(num_pixels):
+            pixel_index = (i * 256 // num_pixels) + j
+            pixels[i] = wheel(pixel_index & 255)
+        pixels.show()
+        time.sleep(wait)
+
 
 # === Main Execution ===
 escape_sequence_count = 0
@@ -220,6 +265,8 @@ last_three_keys = [(None, 0), (None, 0), (None, 0)]
 
 
 while True:
+    pixels.fill((255, 165, 0))
+    pixels.show()
     event = km.events.get()
     if event:
         # Calculate row and column from the key_number.
@@ -293,3 +340,9 @@ while True:
                     enter_pressed = False  # Reset the enter_pressed flag on Keycode.ENTER release
                 kbd.release_all()
                 kbd.release(keycode)
+
+
+
+
+
+
