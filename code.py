@@ -59,12 +59,26 @@ pixels = neopixel.NeoPixel(
 )
 
 # === Keymap Configuration ===
+
+LEFT_SPACE = 123
+
 KEYMAP = [
     [Keycode.ESCAPE, Keycode.Q, Keycode.W, Keycode.E, Keycode.R, Keycode.T, Keycode.Y, Keycode.U, Keycode.I, Keycode.O, Keycode.P, Keycode.BACKSPACE],
     [Keycode.TAB, Keycode.A, Keycode.S, Keycode.D, Keycode.F, Keycode.G, Keycode.H, Keycode.J, Keycode.K, Keycode.L, Keycode.SEMICOLON, Keycode.ENTER],
     [Keycode.SHIFT, Keycode.Z, Keycode.X, Keycode.C, Keycode.V, Keycode.B, Keycode.N, Keycode.M, Keycode.COMMA, Keycode.PERIOD, Keycode.UP_ARROW, Keycode.SHIFT],
-    [Keycode.CONTROL, Keycode.GUI, Keycode.ALT, Keycode.SPACE, None, Keycode.SPACE, None, Keycode.QUOTE, Keycode.FORWARD_SLASH, Keycode.LEFT_ARROW, Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW]
+    [Keycode.CONTROL, Keycode.GUI, Keycode.ALT, LEFT_SPACE, None, Keycode.SPACE, None, Keycode.QUOTE, Keycode.FORWARD_SLASH, Keycode.LEFT_ARROW, Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW]
 ]
+
+
+SECOND_LAYER_KEYMAP = [
+    [Keycode.ESCAPE, Keycode.ONE, Keycode.TWO, Keycode.THREE, Keycode.FOUR, Keycode.FIVE, Keycode.SIX, Keycode.SEVEN, Keycode.EIGHT, Keycode.NINE, Keycode.ZERO, Keycode.BACKSPACE],
+    [Keycode.TAB, Keycode.A, Keycode.S, Keycode.D, Keycode.F, Keycode.G, Keycode.H, Keycode.J, Keycode.K, Keycode.L, Keycode.SEMICOLON, Keycode.ENTER],
+    [Keycode.SHIFT, Keycode.Z, Keycode.X, Keycode.C, Keycode.V, Keycode.B, Keycode.N, Keycode.M, Keycode.COMMA, Keycode.PERIOD, Keycode.UP_ARROW, Keycode.SHIFT],
+    [Keycode.CONTROL, Keycode.GUI, Keycode.ALT, LEFT_SPACE, None, Keycode.SPACE, None, Keycode.QUOTE, Keycode.FORWARD_SLASH, Keycode.LEFT_ARROW, Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW]
+]
+
+
+
 
 def keycode_to_char(keycode):
     """Converts a keycode to a character."""
@@ -206,6 +220,9 @@ def rainbow_cycle(wait):
 # === Main Execution ===
 escape_sequence_count = 0
 chatgpt_enabled = True
+print('ChatGPT is enabled')
+second_layer_active = False
+print('Second Layer Active is false - we are on the first layer')
 
 print("Waiting for keypresses...")
 
@@ -255,6 +272,7 @@ jsonData = {
 }
 
 chatgpt_enabled = True  # This variable will determine whether Chat GPT functionality is active
+print('ChatGPT is enabled')
 
 # Step 1: Initialize an empty string for the accumulated keystrokes.
 typed_message = ""
@@ -263,86 +281,89 @@ enter_pressed = False  # Add this flag
 # Initialize a list to track the last three keypresses and their timestamps
 last_three_keys = [(None, 0), (None, 0), (None, 0)]
 
-
 while True:
     pixels.fill((255, 165, 0))
     pixels.show()
+
     event = km.events.get()
     if event:
         # Calculate row and column from the key_number.
         row, col = divmod(event.key_number, len(KEYMAP[0]))
 
         # Fetch the HID keycode from the KEYMAP.
-        keycode = KEYMAP[row][col]
+        if second_layer_active:
+            keycode = SECOND_LAYER_KEYMAP[row][col]
+        else:
+            keycode = KEYMAP[row][col]
+
         if keycode is not None:
+            print('keycode is not None')
             if event.pressed:
-                kbd.press(keycode)
-                
-                # Update the last_three_keys list
-                current_time = time.time()
-                last_three_keys.pop(0)  # Remove the oldest key
-                last_three_keys.append((keycode, current_time))
+                if keycode == LEFT_SPACE:
+                    print('left space is pressed')
+                    # Toggle the layer active state and continue to the next iteration of the loop
+                    second_layer_active = not second_layer_active
+                    continue
 
-                # Check for three consecutive "Escape" key presses within 2 seconds
-                if all(k == Keycode.ESCAPE for k, _ in last_three_keys) and (last_three_keys[2][1] - last_three_keys[0][1] <= 2):
-                    chatgpt_enabled = not chatgpt_enabled
-                    print("Chat GPT is now", "enabled" if chatgpt_enabled else "disabled")
-                    last_three_keys = [(None, 0), (None, 0), (None, 0)]  # Reset the list to prevent immediate re-triggering
-
-                # Instead of printing the keystrokes, accumulate them.
-                if keycode == Keycode.BACKSPACE:
-                    typed_message = typed_message[:-1]  # Remove the last character.
-                elif keycode == Keycode.ENTER:
-                    kbd.release(keycode)
-                    if not enter_pressed and chatgpt_enabled:  # Check if "Enter" was already pressed AND if Chat GPT is enabled
-                        enter_pressed = True
-                        
-                        # Use the accumulated typed_message as the message for the API.
-                        messages.append({"content": typed_message, "role": "user"})
-                        jsonData["messages"] = messages
-
-                        response = requests.request("POST", url, json=jsonData, headers=headers, timeout=15)
-                        print('response status code=', response.status_code)
-
-                        response = json.loads(response.text)
-                        role = str(response['choices'][0]['message']['role'])
-                        response_content = str(response['choices'][0]['message']['content'])
-                        response = "\n" + response_content + "\n\n"  # add two newline characters before the actual content
-                        print(response)
-
-                        # After receiving the response, "type out" the characters
-                        for char in response:
-                            keycode = char_to_keycode(char)
-                            if keycode:
-                                if isinstance(keycode, tuple):
-                                    kbd.press(keycode[0])  # Press the Shift key
-                                    kbd.press(keycode[1])  # Press the character key
-                                    kbd.release_all()      # Release all keys
-                                else:
-                                    kbd.press(keycode)
-                                    kbd.release(keycode)
-                                time.sleep(0.05)
-
-
-
-                        # Reset typed_message and messages for the next input.
-                        typed_message = ""
-                        messages = [
-                            {"content": "You are an ethereal spirit with a haunted, spooky vibe, who makes brief, dark, barely coherent statements.", "role": "system"}
-                        ]
-                            
                 else:
-                    # Handle capital letters, etc.
-                    typed_message += keycode_to_char(keycode)
+                    kbd.press(keycode)
 
-            else:
-                if keycode == Keycode.ENTER:
-                    enter_pressed = False  # Reset the enter_pressed flag on Keycode.ENTER release
-                kbd.release_all()
+                    # Update the last_three_keys list
+                    current_time = time.time()
+                    last_three_keys.pop(0)  # Remove the oldest key
+                    last_three_keys.append((keycode, current_time))
+
+                    # Check for three consecutive "Escape" key presses within 2 seconds
+                    if all(k == Keycode.ESCAPE for k, _ in last_three_keys) and (last_three_keys[2][1] - last_three_keys[0][1] <= 2):
+                        chatgpt_enabled = not chatgpt_enabled
+                        print("Chat GPT is now", "enabled" if chatgpt_enabled else "disabled")
+                        last_three_keys = [(None, 0), (None, 0), (None, 0)]  # Reset the list to prevent immediate re-triggering
+
+                    # Instead of printing the keystrokes, accumulate them.
+                    if keycode == Keycode.BACKSPACE:
+                        typed_message = typed_message[:-1]  # Remove the last character.
+                    elif keycode == Keycode.ENTER:
+                        kbd.release(keycode)
+                        if not enter_pressed and chatgpt_enabled:
+                            enter_pressed = True
+
+                            # Use the accumulated typed_message as the message for the API.
+                            messages.append({"content": typed_message, "role": "user"})
+                            jsonData["messages"] = messages
+
+                            response = requests.request("POST", url, json=jsonData, headers=headers, timeout=15)
+                            print('response status code=', response.status_code)
+
+                            response = json.loads(response.text)
+                            role = str(response['choices'][0]['message']['role'])
+                            response_content = str(response['choices'][0]['message']['content'])
+                            response = "\n" + response_content + "\n\n"  # add two newline characters before the actual content
+                            print(response)
+
+                            # After receiving the response, "type out" the characters
+                            for char in response:
+                                keycode_response = char_to_keycode(char)
+                                if keycode_response:
+                                    if isinstance(keycode_response, tuple):
+                                        kbd.press(keycode_response[0])  # Press the Shift key
+                                        kbd.press(keycode_response[1])  # Press the character key
+                                        kbd.release_all()
+                                    else:
+                                        kbd.press(keycode_response)
+                                        kbd.release(keycode_response)
+                                    time.sleep(0.05)
+
+                            # Reset typed_message and messages for the next input.
+                            typed_message = ""
+                            messages = [
+                                {"content": "You are an ethereal spirit with a haunted, spooky vibe, who makes brief, dark, barely coherent statements.", "role": "system"}
+                            ]
+                    else:
+                        # Handle capital letters, etc.
+                        typed_message += keycode_to_char(keycode)
+
+            else:  # If the key is released
                 kbd.release(keycode)
 
-
-
-
-
-
+                if keycode == Keycode.ENTER:
+                    enter_pressed = False  # Reset the enter_pressed flag on Keycode.ENTER release
